@@ -17,12 +17,21 @@ clock = pygame.time.Clock()
 dot_radius = 1
 dot_color = (255, 255, 255)  # White
 
-# Experiment parameters
-coherences = [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+# Experiment parameters [1, 3, 6, 9, 12, 15, 18, 20, 25, 30, 40, 50, 60, 80, 100]
+coherences = [1, 3, 6, 9, 12, 15, 18, 20, 25, 30, 40, 50]
 trials_per_coherence = 1
 frames_per_trial = 120
 coherent_dot_speed = 1
 incoherent_dot_speed = 1
+participant_id = 1
+
+
+# Save results to separate file
+def save_results_to_file(results):
+    file_name = "results{}.txt".format(participant_id)
+    with open(file_name, "w") as file:
+        # Write the results to the file
+        file.write(results)
 
 # Function to generate random dot positions within a square
 def generate_dot_positions(num_dots):
@@ -42,22 +51,31 @@ def generate_dot_positions(num_dots):
 
 
 # Function to update dot positions
-# Function to update dot positions
-def update_dot_positions(positions, coherence):
+def update_dot_positions(positions, coherence, endpoint_x, endpoint_y):
     coherent_dots = round(len(positions) * coherence / 100)
     field_size = 300
     field_left = (screen_width - field_size) // 2
     field_top = (screen_height - field_size) // 2
-    endpoint_x = field_left + field_size
-    endpoint_y = field_top + field_size // 2
-
-    # Calculate the angle towards the endpoint
-    angle = math.atan2(endpoint_y - field_top, endpoint_x - field_left)
-    direction_x = math.cos(angle)
-    direction_y = math.sin(angle)
 
     for i in range(coherent_dots):
         x, y, _, _ = positions[i]
+
+        # Calculate direction towards the endpoint
+        direction_x = (endpoint_x - x) / field_size
+        direction_y = (endpoint_y - y) / field_size
+
+        # Check if direction length is zero
+        direction_length = math.sqrt(direction_x ** 2 + direction_y ** 2)
+        if direction_length == 0:
+            direction_x = 0
+            direction_y = 0
+        else:
+            # Normalize the direction vector
+            direction_x /= direction_length
+            direction_y /= direction_length
+
+        # Rest of the code remains the same...
+
 
         # Move coherent dots
         x += direction_x * coherent_dot_speed
@@ -98,7 +116,6 @@ def update_dot_positions(positions, coherence):
         positions[i] = (x, y, direction_x, direction_y)
 
 
-
 # Display instruction text
 instruction_font = pygame.font.Font(None, 20)
 instruction_text_content = """
@@ -136,10 +153,39 @@ while not start:
 
 # Main experiment loop
 results = []
+previous_endpoints = []
 for coherence in coherences:
+    results.append(f'{coherence}%:')
     for trial in range(trials_per_coherence):
         # Generate dot positions for the trial
         dot_positions = generate_dot_positions(250)
+
+        # Calculate the direction towards the endpoint
+        field_size = 300
+        field_left = (screen_width - field_size) // 2
+        field_top = (screen_height - field_size) // 2
+        # Calculate the direction towards the endpoint
+        field_left = (screen_width - field_size) // 2
+        field_top = (screen_height - field_size) // 2
+        if trial < 2 or previous_endpoints[trial-1] != previous_endpoints[trial-2]:
+            endpoint_side = random.choice(['left', 'right'])
+        else:
+            endpoint_side = 'left' if previous_endpoints[trial-1] == 'right' else 'right'
+
+        # Calculate the endpoint coordinates based on the chosen side
+        if endpoint_side == 'left':
+            endpoint_x = field_left
+        else:
+            endpoint_x = field_left + field_size
+
+        endpoint_y = random.randint(field_top + dot_radius, field_top + field_size - dot_radius)
+
+        # Store the current endpoint for future reference
+        previous_endpoints.append(endpoint_side)
+
+        angle = math.atan2(endpoint_y - field_top, endpoint_x - field_left)
+        direction_x = math.cos(angle)
+        direction_y = math.sin(angle)
 
         # Show stimuli
         for frame in range(frames_per_trial):
@@ -154,7 +200,8 @@ for coherence in coherences:
                         sys.exit()
 
             # Update dot positions
-            update_dot_positions(dot_positions, coherence)
+            update_dot_positions(dot_positions, coherence, endpoint_x, endpoint_y)
+
 
             # Clear the screen
             screen.fill((0, 0, 0))  # Black
@@ -163,7 +210,6 @@ for coherence in coherences:
             for position in dot_positions:
                 x, y, _, _ = position  # Unpack the x and y values from the position tuple
                 pygame.draw.circle(screen, dot_color, (x, y), dot_radius)
-
 
             # Update the screen
             pygame.display.flip()
@@ -177,12 +223,12 @@ for coherence in coherences:
             for event in pygame.event.get():
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_LEFT:
-                        if coherence <= 50:
+                        if endpoint_side == 'left':
                             response = 1
                         else:
                             response = -1
                     elif event.key == pygame.K_RIGHT:
-                        if coherence > 50:
+                        if endpoint_side == 'right':
                             response = 1
                         else:
                             response = -1
@@ -190,19 +236,12 @@ for coherence in coherences:
                         pygame.quit()
                         sys.exit()
 
-        # Print the response
-        print(f"Coherence: {coherence}%, Trial: {trial+1}, Response: {response}")
-
         # Save the response to results
-        results.append([coherence, response])
+        results.append(response)
 
         # Pause for half a second before showing the next stimuli
         pygame.time.wait(500)
 
-# Save results to file
-with open("results.txt", "a") as file:
-    for i, result in enumerate(results):
-        file.write(f"Participant nr. {i+1}: {result}\n")
 
 # Display thank you message
 thank_you_font = pygame.font.Font(None, 36)
@@ -211,6 +250,10 @@ thank_you_text_rect = thank_you_text.get_rect(center=(screen_width // 2, screen_
 screen.fill((0, 0, 0))  # Black
 screen.blit(thank_you_text, thank_you_text_rect)
 pygame.display.flip()
+
+
+# Save results to file
+save_results_to_file(str(results))
 
 # Wait for a few seconds before closing the program or ESCAPE to exit
 end_time = time.time() + 3  # Display thank you message for 3 seconds
